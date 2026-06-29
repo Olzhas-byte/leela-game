@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 interface Props {
-  onRoll: (source: "auto" | "player", dice?: number) => void;
+  onRoll: (source: "auto" | "player", dice?: number) => Promise<void> | void;
   disabled: boolean;
   extraTurn?: boolean;
 }
@@ -29,10 +29,8 @@ export default function DicePanel({ onRoll, disabled, extraTurn }: Props) {
       setRolling(false);
     } else {
       setRolling(true);
-      // Анимация — краткая пауза
-      await new Promise((r) => setTimeout(r, 300));
+      await onRoll("auto");
       setRolling(false);
-      onRoll("auto");
     }
   }
 
