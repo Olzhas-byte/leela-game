@@ -3,9 +3,9 @@
  * Используется только на сервере (API-роуты) — ключ никогда не уходит в браузер.
  *
  * Требуемые env:
- *   GLM_API_KEY   — ключ Zhipu
- *   GLM_BASE_URL  — напр. https://open.bigmodel.cn/api/paas/v4  (подтвердить по докам)
- *   GLM_MODEL     — id модели, напр. glm-5.2
+ *   GLM_API_KEY   — ключ с bigmodel.cn (Консоль → API Keys)
+ *   GLM_BASE_URL  — https://open.bigmodel.cn/api/paas/v4
+ *   GLM_MODEL     — glm-4.7 (рекомендуется) | glm-5 | glm-4.7-flash (бесплатный)
  */
 import OpenAI from 'openai';
 import { SYSTEM_PROMPT } from './systemPrompt';
