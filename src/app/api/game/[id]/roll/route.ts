@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { applyRoll, rollDice, isValidDice } from "@/game/rules";
@@ -7,6 +8,12 @@ import { buildTurnContext } from "@/llm/buildContext";
 import { interpretTurn, interpretTurnOnce } from "@/llm/client";
 import { getCell } from "@/game/board";
 import type { GameState, Move } from "@/game/engine";
+
+interface Player {
+  name: string;
+  position: number;
+  status: string;
+}
 
 const schema = z.discriminatedUnion("diceSource", [
   z.object({ diceSource: z.literal("auto") }),
@@ -40,20 +47,57 @@ export async function POST(
   if (game.status === "finished")
     return NextResponse.json({ error: "Партия уже завершена" }, { status: 400 });
 
+  // ── Определяем текущего игрока ───────────────────────────────────────────────
+  const players = (game.players as unknown as Player[]) ?? [];
+  const isMultiplayer = players.length > 1;
+  const currentPlayerIndex = game.currentPlayerIndex;
+  const currentPlayer = players[currentPlayerIndex];
+  const currentPlayerName = currentPlayer?.name ?? "Игрок";
+  const currentPlayerPosition = isMultiplayer ? (currentPlayer?.position ?? 0) : game.position;
+
   // ── Бросок ──────────────────────────────────────────────────────────────────
   const dice =
-    parsed.data.diceSource === "auto"
-      ? rollDice()
-      : parsed.data.dice;
+    parsed.data.diceSource === "auto" ? rollDice() : parsed.data.dice;
 
   if (!isValidDice(dice)) {
     return NextResponse.json({ error: "Некорректное число кубика" }, { status: 400 });
   }
 
-  const result = applyRoll(game.position, dice);
+  const result = applyRoll(currentPlayerPosition, dice);
   const newIndex = game.moves.length + 1;
 
-  // ── Сохраняем ход в БД (без интерпретации пока) ─────────────────────────────
+  // ── Обновляем массив игроков ─────────────────────────────────────────────────
+  let updatedPlayers = players;
+  if (isMultiplayer && players.length > 0) {
+    updatedPlayers = players.map((p, i) => {
+      if (i !== currentPlayerIndex) return p;
+      return {
+        ...p,
+        position: result.toPosition,
+        status: result.finished
+          ? "finished"
+          : result.event === "awaiting_entry"
+          ? "awaiting_entry"
+          : "in_progress",
+      };
+    });
+  }
+
+  // ── Следующий ход ─────────────────────────────────────────────────────────────
+  let nextPlayerIndex = currentPlayerIndex;
+  if (!result.extraTurn && !result.finished && isMultiplayer) {
+    nextPlayerIndex = (currentPlayerIndex + 1) % players.length;
+  }
+
+  // ── Статус игры ───────────────────────────────────────────────────────────────
+  const newStatus =
+    result.finished
+      ? "finished"
+      : !isMultiplayer && result.event === "awaiting_entry"
+      ? "awaiting_entry"
+      : "in_progress";
+
+  // ── Сохраняем ход ────────────────────────────────────────────────────────────
   const move = await prisma.move.create({
     data: {
       gameId: id,
@@ -67,27 +111,24 @@ export async function POST(
       transitionType: result.transition?.type ?? null,
       transitionTo: result.transition?.to ?? null,
       cellNumber: result.cellNumber,
+      playerIndex: currentPlayerIndex,
     },
   });
 
-  // ── Обновляем состояние партии ───────────────────────────────────────────────
-  const newStatus = result.finished
-    ? "finished"
-    : result.event === "awaiting_entry"
-    ? "awaiting_entry"
-    : "in_progress";
-
+  // ── Обновляем партию ─────────────────────────────────────────────────────────
   await prisma.game.update({
     where: { id },
     data: {
-      position: result.toPosition,
-      previousPosition: result.fromPosition,
+      position: isMultiplayer ? game.position : result.toPosition,
+      previousPosition: isMultiplayer ? game.previousPosition : result.fromPosition,
+      players: updatedPlayers as unknown as Prisma.InputJsonValue,
+      currentPlayerIndex: nextPlayerIndex,
       status: newStatus,
       finishedAt: result.finished ? new Date() : undefined,
     },
   });
 
-  // ── Формируем контекст для LLM ──────────────────────────────────────────────
+  // ── Контекст для LLM ─────────────────────────────────────────────────────────
   const gameState: GameState = {
     id: game.id,
     userId: game.userId,
@@ -106,12 +147,7 @@ export async function POST(
         toPosition: m.toPosition,
         cellNumber: m.cellNumber,
         transition: m.transitionType
-          ? {
-              type: m.transitionType as "arrow" | "snake",
-              from: m.landedPosition,
-              to: m.transitionTo!,
-              quality: "",
-            }
+          ? { type: m.transitionType as "arrow" | "snake", from: m.landedPosition, to: m.transitionTo!, quality: "" }
           : null,
         extraTurn: false,
         finished: m.event === "win",
@@ -132,23 +168,22 @@ export async function POST(
 
   gameState.history.push(currentMove);
 
-  const userContext = buildTurnContext(gameState, currentMove);
+  const baseContext = buildTurnContext(gameState, currentMove);
+  const userContext = isMultiplayer
+    ? `ИГРОК: ${currentPlayerName}\n\n${baseContext}`
+    : baseContext;
 
-  // ── Стриминг трактовки ──────────────────────────────────────────────────────
+  // ── SSE-стрим ────────────────────────────────────────────────────────────────
   const encoder = new TextEncoder();
   let fullInterpretation = "";
 
-  const headers: Record<string, string> = {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-    "X-Accel-Buffering": "no",
-  };
-
-  // Сначала отправляем метаданные хода (детерминированные данные)
   const metadata = {
     type: "meta",
     dice,
+    playerIndex: currentPlayerIndex,
+    playerName: currentPlayerName,
+    nextPlayerIndex,
+    players: updatedPlayers,
     result: {
       event: result.event,
       fromPosition: result.fromPosition,
@@ -167,33 +202,30 @@ export async function POST(
 
   const readable = new ReadableStream({
     async start(controller) {
-      // Метаданные хода
-      controller.enqueue(
-        encoder.encode(`data: ${JSON.stringify(metadata)}\n\n`)
-      );
+      controller.enqueue(encoder.encode(`data: ${JSON.stringify(metadata)}\n\n`));
 
       try {
         await interpretTurn({
           userContext,
           onToken(chunk) {
             fullInterpretation += chunk;
-            const payload = JSON.stringify({ type: "token", text: chunk });
-            controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ type: "token", text: chunk })}\n\n`)
+            );
           },
           signal: undefined,
         });
       } catch {
-        // Фоллбэк: нестриминговый запрос
         try {
           fullInterpretation = await interpretTurnOnce(userContext);
         } catch {
           fullInterpretation = "Трактовка временно недоступна. Продолжайте игру.";
         }
-        const payload = JSON.stringify({ type: "token", text: fullInterpretation });
-        controller.enqueue(encoder.encode(`data: ${payload}\n\n`));
+        controller.enqueue(
+          encoder.encode(`data: ${JSON.stringify({ type: "token", text: fullInterpretation })}\n\n`)
+        );
       }
 
-      // Сохраняем интерпретацию в БД
       await prisma.move.update({
         where: { id: move.id },
         data: { interpretation: fullInterpretation },
@@ -204,5 +236,12 @@ export async function POST(
     },
   });
 
-  return new Response(readable, { headers });
+  return new Response(readable, {
+    headers: {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    },
+  });
 }

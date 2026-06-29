@@ -3,6 +3,12 @@ import { redirect, notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import GameClient from "./GameClient";
 
+interface Player {
+  name: string;
+  position: number;
+  status: string;
+}
+
 export default async function GamePage({
   params,
 }: {
@@ -30,6 +36,7 @@ export default async function GamePage({
           interpretation: true,
           transitionType: true,
           transitionTo: true,
+          playerIndex: true,
         },
       },
     },
@@ -38,6 +45,8 @@ export default async function GamePage({
   if (!game) notFound();
   if (game.userId !== session.user.id) notFound();
 
+  const players = (game.players as unknown as Player[]) ?? [];
+
   return (
     <GameClient
       game={{
@@ -45,6 +54,8 @@ export default async function GamePage({
         intention: game.intention,
         status: game.status,
         position: game.position,
+        players,
+        currentPlayerIndex: game.currentPlayerIndex,
         moves: game.moves.map((m) => ({
           id: m.id,
           index: m.index,
@@ -54,6 +65,7 @@ export default async function GamePage({
           toPosition: m.toPosition,
           cellNumber: m.cellNumber,
           interpretation: m.interpretation ?? undefined,
+          playerIndex: m.playerIndex,
         })),
       }}
     />

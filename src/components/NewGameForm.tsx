@@ -2,15 +2,25 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { PLAYER_COLORS } from "@/app/game/[id]/GameClient";
 
 export default function NewGameForm() {
   const router = useRouter();
   const [intention, setIntention] = useState("");
   const [honest, setHonest] = useState(false);
+  const [playerCount, setPlayerCount] = useState(1);
+  const [playerNames, setPlayerNames] = useState(["", "", "", "", "", ""]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const canStart = intention.trim().length > 0 && honest;
+  const namesValid =
+    playerCount === 1 ||
+    playerNames.slice(0, playerCount).every((n) => n.trim().length > 0);
+  const canStart = intention.trim().length > 0 && honest && namesValid;
+
+  function updateName(idx: number, val: string) {
+    setPlayerNames((prev) => prev.map((n, i) => (i === idx ? val : n)));
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -19,10 +29,19 @@ export default function NewGameForm() {
     setError("");
     setLoading(true);
 
+    const names =
+      playerCount === 1
+        ? ["Игрок"]
+        : playerNames.slice(0, playerCount).map((n) => n.trim());
+
     const res = await fetch("/api/game", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ intention: intention.trim(), honest: true }),
+      body: JSON.stringify({
+        intention: intention.trim(),
+        honest: true,
+        playerNames: names,
+      }),
     });
 
     if (!res.ok) {
@@ -37,7 +56,7 @@ export default function NewGameForm() {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-5">
       <div className="space-y-1">
         <label className="text-xs text-[#7b8099] uppercase tracking-widest">
           Намерение
@@ -53,10 +72,60 @@ export default function NewGameForm() {
                      focus:border-[#d4a853] transition-colors resize-none
                      font-serif text-sm leading-relaxed"
         />
-        <p className="text-right text-xs text-[#7b8099]">
-          {intention.length}/500
-        </p>
+        <p className="text-right text-xs text-[#7b8099]">{intention.length}/500</p>
       </div>
+
+      {/* Число игроков */}
+      <div className="space-y-2">
+        <label className="text-xs text-[#7b8099] uppercase tracking-widest">
+          Число игроков
+        </label>
+        <div className="flex gap-2">
+          {[1, 2, 3, 4, 5, 6].map((n) => (
+            <button
+              key={n}
+              type="button"
+              onClick={() => setPlayerCount(n)}
+              className={`flex-1 py-2 text-sm rounded-sm border transition-colors ${
+                playerCount === n
+                  ? "border-[#d4a853] text-[#d4a853] bg-[#d4a85315]"
+                  : "border-[#1a1d30] text-[#7b8099] hover:border-[#222640]"
+              }`}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Имена игроков */}
+      {playerCount > 1 && (
+        <div className="space-y-2">
+          <label className="text-xs text-[#7b8099] uppercase tracking-widest">
+            Имена игроков
+          </label>
+          <div className="space-y-2">
+            {Array.from({ length: playerCount }).map((_, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <span
+                  className="w-3 h-3 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: PLAYER_COLORS[i] }}
+                />
+                <input
+                  type="text"
+                  value={playerNames[i]}
+                  onChange={(e) => updateName(i, e.target.value)}
+                  maxLength={30}
+                  placeholder={`Игрок ${i + 1}`}
+                  className="flex-1 bg-[#131626] border border-[#1a1d30] rounded-sm px-3 py-2
+                             text-[#e8ecf5] placeholder-[#7b8099] focus:outline-none
+                             focus:border-[#d4a853] transition-colors text-sm"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <label className="flex items-start gap-3 cursor-pointer group">
         <div className="relative mt-0.5">

@@ -11,11 +11,14 @@ interface MoveEntry {
   interpretation?: string;
   isStreaming?: boolean;
   streamText?: string;
+  playerName?: string;
+  playerColor?: string;
 }
 
 interface Props {
   moves: MoveEntry[];
   intention: string;
+  isMultiplayer?: boolean;
 }
 
 function eventLabel(event: string, cellNumber: number | null): string {
@@ -37,9 +40,9 @@ function eventColor(event: string): string {
   return "text-[#7b8099]";
 }
 
-export default function GuideFeed({ moves, intention }: Props) {
+export default function GuideFeed({ moves, intention, isMultiplayer }: Props) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  const displayed = [...moves].reverse(); // последний вверху
+  const displayed = [...moves].reverse();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -67,18 +70,27 @@ export default function GuideFeed({ moves, intention }: Props) {
             key={m.index}
             className="bg-[#0d0f1a] border border-[#1a1d30] rounded-sm p-5 space-y-3 animate-fade-in"
           >
-            {/* Шапка хода */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <span className="text-xs text-[#7b8099]">Ход {m.index}</span>
                 <span className="text-xs text-[#d4a853]">кубик: {m.dice}</span>
+                {isMultiplayer && m.playerName && (
+                  <span
+                    className="text-xs font-medium px-1.5 py-0.5 rounded-sm"
+                    style={{
+                      color: m.playerColor,
+                      backgroundColor: `${m.playerColor}20`,
+                    }}
+                  >
+                    {m.playerName}
+                  </span>
+                )}
               </div>
               <span className={`text-xs ${eventColor(m.event)}`}>
                 {eventLabel(m.event, m.cellNumber)}
               </span>
             </div>
 
-            {/* Название клетки */}
             {cell && (
               <div className="border-l-2 border-[#d4a853]/40 pl-3">
                 <p className="font-serif text-[#e8ecf5]">
@@ -90,7 +102,6 @@ export default function GuideFeed({ moves, intention }: Props) {
               </div>
             )}
 
-            {/* Текст ведущего */}
             {text ? (
               <div className="guide-text text-sm text-[#c8cde0] leading-relaxed whitespace-pre-wrap font-serif">
                 {text}

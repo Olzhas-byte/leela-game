@@ -84,12 +84,15 @@ enum GameStatus {
 model Game {
   id        String     @id @default(cuid())
   userId    String
-  // Намерение игрока — неизменно в течение партии, подаётся в каждый запрос к LLM.
   intention String     @db.Text
   status    GameStatus @default(awaiting_entry)
 
-  position         Int @default(0) // 0 = вне доски
+  position         Int @default(0)
   previousPosition Int @default(0)
+
+  // Мультиплеер: [{name, position, status}]. Пусто = одиночная игра (легаси).
+  players            Json @default("[]")
+  currentPlayerIndex Int  @default(0)
 
   createdAt  DateTime  @default(now())
   finishedAt DateTime?
@@ -141,8 +144,10 @@ model Move {
   // Клетка для трактовки (= toPosition, либо null при ожидании входа).
   cellNumber Int?
 
-  // Текст трактовки от LLM (заполняется после стрима).
   interpretation String? @db.Text
+
+  // Индекс игрока в массиве game.players (0 для одиночной игры).
+  playerIndex Int @default(0)
 
   createdAt DateTime @default(now())
 

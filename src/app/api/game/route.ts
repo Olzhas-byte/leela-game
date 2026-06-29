@@ -8,6 +8,11 @@ const schema = z.object({
   honest: z.literal(true, {
     errorMap: () => ({ message: "Необходимо подтвердить готовность играть честно" }),
   }),
+  playerNames: z
+    .array(z.string().min(1).max(30))
+    .min(1)
+    .max(6)
+    .optional(),
 });
 
 export async function POST(req: Request) {
@@ -25,6 +30,13 @@ export async function POST(req: Request) {
     );
   }
 
+  const rawNames = parsed.data.playerNames ?? ["Игрок"];
+  const players = rawNames.map((name) => ({
+    name: name.trim(),
+    position: 0,
+    status: "awaiting_entry",
+  }));
+
   const game = await prisma.game.create({
     data: {
       userId: session.user.id,
@@ -32,6 +44,8 @@ export async function POST(req: Request) {
       status: "awaiting_entry",
       position: 0,
       previousPosition: 0,
+      players,
+      currentPlayerIndex: 0,
     },
   });
 
@@ -52,6 +66,8 @@ export async function GET() {
       intention: true,
       status: true,
       position: true,
+      players: true,
+      currentPlayerIndex: true,
       createdAt: true,
       finishedAt: true,
       _count: { select: { moves: true } },
