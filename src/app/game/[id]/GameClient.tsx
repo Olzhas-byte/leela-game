@@ -337,6 +337,7 @@ export default function GameClient({ game: initialGame }: Props) {
                 onRoll={handleRoll}
                 disabled={rolling}
                 extraTurn={extraTurn}
+                awaitingEntry={currentPosition === 0}
               />
             </div>
           )}

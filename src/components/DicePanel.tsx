@@ -6,11 +6,12 @@ interface Props {
   onRoll: (source: "auto" | "player", dice?: number) => Promise<void> | void;
   disabled: boolean;
   extraTurn?: boolean;
+  awaitingEntry?: boolean;
 }
 
 const DICE_FACES = ["", "⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
 
-export default function DicePanel({ onRoll, disabled, extraTurn }: Props) {
+export default function DicePanel({ onRoll, disabled, extraTurn, awaitingEntry }: Props) {
   const [mode, setMode] = useState<"auto" | "player">("auto");
   const [playerDice, setPlayerDice] = useState<number | "">("");
   const [rolling, setRolling] = useState(false);
@@ -36,6 +37,16 @@ export default function DicePanel({ onRoll, disabled, extraTurn }: Props) {
 
   return (
     <div className="space-y-4">
+      {awaitingEntry && (
+        <div className="bg-[#d4a85318] border border-[#d4a853]/40 rounded-sm px-4 py-3 text-center space-y-1">
+          <p className="text-[#d4a853] text-sm font-serif">
+            Для входа в игру нужно выбросить <strong>6</strong>
+          </p>
+          <p className="text-[#7b8099] text-xs">
+            Бросайте кубик — 6 откроет путь на доску
+          </p>
+        </div>
+      )}
       {extraTurn && (
         <p className="text-center text-[#d4a853] text-xs uppercase tracking-widest animate-pulse">
           Дополнительный ход за выпавшую 6!
