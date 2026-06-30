@@ -204,32 +204,35 @@ export async function POST(
     async start(controller) {
       controller.enqueue(encoder.encode(`data: ${JSON.stringify(metadata)}\n\n`));
 
-      try {
-        await interpretTurn({
-          userContext,
-          onToken(chunk) {
-            fullInterpretation += chunk;
-            controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ type: "token", text: chunk })}\n\n`)
-            );
-          },
-          signal: undefined,
-        });
-      } catch {
+      // awaiting_entry — игрок ещё не на доске, трактовка не нужна
+      if (result.event !== "awaiting_entry") {
         try {
-          fullInterpretation = await interpretTurnOnce(userContext);
+          await interpretTurn({
+            userContext,
+            onToken(chunk) {
+              fullInterpretation += chunk;
+              controller.enqueue(
+                encoder.encode(`data: ${JSON.stringify({ type: "token", text: chunk })}\n\n`)
+              );
+            },
+            signal: undefined,
+          });
         } catch {
-          fullInterpretation = "Трактовка временно недоступна. Продолжайте игру.";
+          try {
+            fullInterpretation = await interpretTurnOnce(userContext);
+          } catch {
+            fullInterpretation = "Трактовка временно недоступна. Продолжайте игру.";
+          }
+          controller.enqueue(
+            encoder.encode(`data: ${JSON.stringify({ type: "token", text: fullInterpretation })}\n\n`)
+          );
         }
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ type: "token", text: fullInterpretation })}\n\n`)
-        );
-      }
 
-      await prisma.move.update({
-        where: { id: move.id },
-        data: { interpretation: fullInterpretation },
-      });
+        await prisma.move.update({
+          where: { id: move.id },
+          data: { interpretation: fullInterpretation },
+        });
+      }
 
       controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "done" })}\n\n`));
       controller.close();

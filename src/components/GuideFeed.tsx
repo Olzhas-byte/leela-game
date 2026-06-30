@@ -109,14 +109,14 @@ export default function GuideFeed({ moves, intention, isMultiplayer }: Props) {
                   <span className="inline-block w-0.5 h-4 bg-[#d4a853] ml-0.5 animate-pulse align-bottom" />
                 )}
               </div>
-            ) : (
+            ) : m.event !== "awaiting_entry" ? (
               <div className="flex items-center gap-2 text-[#7b8099] text-sm">
                 <span className="inline-block w-1 h-1 rounded-full bg-[#d4a853] animate-bounce" />
                 <span className="inline-block w-1 h-1 rounded-full bg-[#d4a853] animate-bounce [animation-delay:0.15s]" />
                 <span className="inline-block w-1 h-1 rounded-full bg-[#d4a853] animate-bounce [animation-delay:0.3s]" />
                 <span className="ml-1">Ведущий размышляет…</span>
               </div>
-            )}
+            ) : null}
           </div>
         );
       })}
